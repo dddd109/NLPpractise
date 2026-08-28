@@ -39,4 +39,6 @@ class MultiHeadAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self,n_embd):
         super().__init__()
+        self.fc = nn.Linear(n_embd,4*n_embd)
+        self.proj  = nn.Linear(4*n_embd,n_embd)
         
