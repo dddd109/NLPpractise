@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .RoPE import RoPE
+from ..positional.RoPE import RoPE
 
 class MultiHeadAttention(nn.Module):
     """

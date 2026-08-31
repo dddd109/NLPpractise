@@ -41,6 +41,12 @@ class RMSNorm(nn.Module):
 if __name__ == "__main__":
     dim = 128
     norm = RMSNorm(dim)
-    x= torch.randn(2,3,dim)
+    x= torch.randn(2,3,dim)*5
     y = norm(x)
+    import matplotlib.pyplot as plt
+    axs1 = plt.subplot(1,2,1)
+    axs2 = plt.subplot(1,2,2)
+    axs1.hist(y[1,1:].detach().numpy(),label='y')
+    axs2.hist(x[1,1,:].detach().numpy(),label='x')
+    plt.show()
     print(f"input {x.shape} output:{y.shape},output y mean:{y.sum(dim=-1)}")
