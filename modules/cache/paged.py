@@ -1,5 +1,5 @@
 import torch
-from base import BaseKVCache
+from .base import BaseKVCache
 from typing import Tuple,Optional
 class PagedKVCache(BaseKVCache):
     def __init__(self):
@@ -16,4 +16,3 @@ class PagedKVCache(BaseKVCache):
 
     def reset(self):
         pass
-    

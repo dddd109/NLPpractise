@@ -1,5 +1,5 @@
 import torch
-from base import BaseKVCache
+from .base import BaseKVCache
 class DynamicKVcache(BaseKVCache):
     def __init__(self,num_layers:int):
         self.keys:list[torch.Tensor | None] = [None for _ in range(num_layers)] 

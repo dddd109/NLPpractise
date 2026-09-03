@@ -1,7 +1,8 @@
 import torch
-from base import BaseKVCache
+from .base import BaseKVCache
 from typing import Optional
-class StaticKVCache(BaseKVCache):
+
+class DynamicKVCacheV1(BaseKVCache):
     def __init__(self,
                  num_layers:int,
                  block_size:int,
@@ -70,7 +71,7 @@ class StaticKVCache(BaseKVCache):
 
 if __name__ == "__main__":
     B, H_KV, C = 1,4,128
-    cache = StaticKVCache(num_layers=2, block_size=10)
+    cache = DynamicKVCacheV1(num_layers=2, block_size=10)
 
     # prefill T=5
     k_prefill = torch.randn(B,H_KV,5,C)

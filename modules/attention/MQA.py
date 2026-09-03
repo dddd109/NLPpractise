@@ -8,7 +8,7 @@ from ..ffn.SWiGLU import SwiGLU
 from ..normalize.RMSNorm import RMSNorm
 from ..positional.RoPE import RoPE
 from ..cache.base import BaseKVCache
-from base import Attention
+from .base import Attention
 from dataclasses import dataclass
 
 
@@ -42,15 +42,15 @@ class MQA(Attention):
         self.layer_idx = layer_idx
         self.n_head = config.n_head
         if config.kv_head is None or config.kv_head==0:
-            self.kvhead = config.n_head
+            self.kv_head = config.n_head
 
         else: # q_C//n_head == kv_C//self.kv_head
             assert self.n_embd%config.kv_head==0,"KV头数必须能整除通道数"
-            self.kvhead = config.kv_head
+            self.kv_head = config.kv_head
         
         self.q = nn.Linear(self.n_embd,self.n_embd)
-        self.kv = nn.Linear(self.n_embd,2*self.n_embd//self.n_head*self.kvhead)
-        self.kv_ch = self.n_embd//self.n_head*self.kvhead
+        self.kv = nn.Linear(self.n_embd,2*self.n_embd//self.n_head*self.kv_head)
+        self.kv_ch = self.n_embd//self.n_head*self.kv_head
 
         self.proj = nn.Linear(self.n_embd,self.n_embd)
 
@@ -64,13 +64,13 @@ class MQA(Attention):
 
         q = self.q(x).view(B,T,self.n_head,C//self.n_head).transpose(1,2)
             # B,T,C -> B,T,n_head,C//n_head -> B,n_head,T,C//n_head
-        k,v = self.kv(x).split(self.kv_ch,dim =-1) # B,T,C*kvhead//n_head 
+        k,v = self.kv(x).split(self.kv_ch,dim =-1) # B,T,C*kv_head//n_head 
         # 要兼容MQA MHA GQA
-        q = q.view(B,T,self.n_head,C//self.n_head).transpose(1,2) # B,T,nh,head_size --> B,nh,T,C/nh
+        
         # k = k.view(B,T,self.n_head,C//self.n_head).transpose(1,2) # B,nh,T,C//nh
         # v = v.view(B,T,self.n_head,C//self.n_head).transpose(1,2)
-        k = k.view(B,T,self.kvhead,self.n_embd//self.n_head).transpose(1,2)
-        v = v.view(B,T,self.kvhead,self.n_embd//self.n_head).transpose(1,2)
+        k = k.view(B,T,self.kv_head,self.n_embd//self.n_head).transpose(1,2)
+        v = v.view(B,T,self.kv_head,self.n_embd//self.n_head).transpose(1,2)
 
         if self.rope is not None:
             cos,sin = self.rope.get_cos_sin(T,q.device,q.dtype,position_offset)
@@ -82,8 +82,8 @@ class MQA(Attention):
 
         if self.kv_head!=self.n_head:
 #-----------------------------------------------------------------------------------------------------------
-            k = k.repeat_interleave(self.n_head//self.kvhead,dim=1)  # B,kvhead,T,C//n_head 这是直接物理复制，可优化
-            v = v.repeat_interleave(self.n_head//self.kvhead,dim=1) # B,kvhead,T,C//n_head
+            k = k.repeat_interleave(self.n_head//self.kv_head,dim=1)  # B,kv_head,T,C//n_head 这是直接物理复制，可优化
+            v = v.repeat_interleave(self.n_head//self.kv_head,dim=1) # B,kv_head,T,C//n_head
 #-----------------------------------------------------------------------------------------------------------
 
         attn = (q@k.transpose(-1,-2))*(1.0/math.sqrt(k.size(-1))) # B,nh,T,T
