@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Config:
+class MQAConfig:
         n_embd:int
         block_size:int
         n_head:int
@@ -32,7 +32,7 @@ class MQA(Attention):
         rope : bool = True 是否使用rope 默认True
     """
     def __init__(self,
-                 config:Config,
+                 config:MQAConfig,
                  layer_idx:Optional[int] = None
                  ):
         super().__init__()
@@ -99,21 +99,21 @@ class MQA(Attention):
 if __name__ =="__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     evaltimes = 50
-    cfg_mqa = Config(
+    cfg_mqa = MQAConfig(
         n_embd=512,
         block_size=1024,
         n_head=16,
         kv_head=4,
         rope=True
     )
-    cfg_mqa_no_rope = Config(
+    cfg_mqa_no_rope = MQAConfig(
         n_embd=512,
         block_size=1024,
         n_head=16,
         kv_head=4,
         rope=False
     )
-    cfg_mha = Config(
+    cfg_mha = MQAConfig(
         n_embd=512,
         block_size=1024,
         n_head=16,
