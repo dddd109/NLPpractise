@@ -17,10 +17,7 @@ class BenchmarkRunner:
         self.iters = iters
 
     @torch.no_grad()
-    def run(
-        self,
-        case:BenchmarkCase,
-        ) -> BenchmarkResult:
+    def run(self,case:BenchmarkCase,) -> BenchmarkResult:
         # 1. reset memory statistics
         reset_peak_memory()
         # 2. latency
@@ -31,10 +28,7 @@ class BenchmarkRunner:
         )
         # 3. throughput
 
-        throughput = (
-            case.num_tokens
-            / (timing.mean / 1000)
-        )
+        throughput = case.num_tokens/ (timing.mean / 1000)
         # 4. memory
 
         memory = get_memory_stats()
