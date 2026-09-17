@@ -48,18 +48,29 @@ class BenchmarkRunner:
         if case.memory_fn is not None:
             kv_cache_mb = case.memory_fn
         
-        memory = get_memory_stats()
+        memory = get_memory_stats(kv_cache_mb=kv_cache_mb)
         # ---------------------------------------
         # 5. FLOPs
         theoretical_flops = None
-        archieved_tflops = None
+        achieved_tflops = None
+        estimated_memory_bytes = None
+        arithmetic_intensity = None
+
         if case.flop_fn is not None:
             theoretical_flops = case.flop_fn()
-            
-            archieved_tflops = flops_to_tflops(
+            achieved_tflops = flops_to_tflops(
                 theoretical_flops,
-                timing.mean,
+                timing.mean_ms,
             )
+
+        if case.byte_fn is not None:
+            estimated_memory_bytes = case.byte_fn()
+
+            if theoretical_flops is not None and estimated_memory_bytes > 0:
+                arithmetic_intensity = (
+                    theoretical_flops /
+                    estimated_memory_bytes
+                )
 # -------------------------------------------------------
         #profiler
         profile_result = None
@@ -69,14 +80,16 @@ class BenchmarkRunner:
                 case.fn,
                 name=case.name,
             )
-        
+#------------------------------------------------------------------------------
         compute = ComputeMetrics(
             theoretical_flops=theoretical_flops,
             profiler_flops=(profile_result.profiler_flops
             if profile_result is not None else None),
-            achieved_tflops=archieved_tflops,
+            achieved_tflops=achieved_tflops,
+            estimated_memory_bytes= estimated_memory_bytes,
+            arithmetic_intensity=arithmetic_intensity,
         )
-        
+        # ---------------------------------------------------------
         return BenchmarkResult(
             name=case.name,
             workload=case.workload,
