@@ -1,18 +1,21 @@
 # benchmark/result.py
 
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 from typing import Optional
 
 @dataclass
 class WorkloadInfo:
-    batch_size:int
-    q_len:int
-    kv_len:int
-    hidden_size:int
-    num_q_heads:Optional[int] = None
-    num_kv_heads:Optional[int] = None
-    dtype:Optional[str] = None
-    mode:Optional[str] = None
+    name: str
+
+    batch_size: Optional[int] = None
+
+    input_shapes: Optional[dict] = None
+    output_shapes: Optional[dict] = None
+
+    dtype: Optional[str] = None
+    device: Optional[str] = None
+
+    metadata: dict = field(default_factory=dict)
 
 @dataclass
 class TimingMetrics:

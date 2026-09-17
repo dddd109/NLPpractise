@@ -13,7 +13,9 @@ class BenchmarkCase:
     name: str
     fn: Callable[[], Any]
     workload: WorkloadInfo
-    num_tokens: int = 0
     flop_fn: Optional[Callable[[], int]] = None
     memory_fn: Optional[Callable[[], float]] = None
     metadata: dict = field(default_factory=dict)
+    throughput_fn: Optional[
+        Callable[[float], float]
+    ] = None
