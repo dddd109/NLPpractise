@@ -1,6 +1,6 @@
 import torch
 
-from ...modules.attention.MQA import MQA, MQAConfig
+from modules.attention.MQA import MQA, MQAConfig
 
 from benchmark.case import BenchmarkCase
 from benchmark.result import WorkloadInfo
@@ -251,12 +251,12 @@ case = BenchmarkCase(
 runner = BenchmarkRunner(
     warmup=10,
     iters=100,
+    enable_profile=True,
 )
 
 
 result = runner.run(
     case=case,
-    enable_profile=True,
 )
 
 
@@ -315,8 +315,8 @@ print(
 
 print(
     f"  arithmetic intensity : "
-    f"{result.compute.arithmetic_intensity:.4f} FLOP/Byte"
-    if result.compute.arithmetic_intensity is not None
+    f"{result.compute.estimated_arithmetic_intensity:.4f} FLOP/Byte"
+    if result.compute.estimated_arithmetic_intensity is not None
     else "  arithmetic intensity : N/A"
 )
 

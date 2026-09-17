@@ -17,7 +17,8 @@ class BenchmarkCase:
     flop_fn: Optional[Callable[[], int]] = None
     memory_fn: Optional[Callable[[], float]] = None # workload-specific memory capacity, e.g. KV cache 表示内存占用
     byte_fn:Optional[Callable[[],int]] = None # 给arithmetric intensity 估计数据移动
-    metadata: dict = field(default_factory=dict)
     throughput_fn: Optional[
     Callable[[TimingMetrics, WorkloadInfo], float]
-] = None
+    ] = None
+    throughput_unit:Optional[str] = None
+    metadata: dict = field(default_factory=dict)

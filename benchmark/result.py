@@ -34,7 +34,7 @@ class ComputeMetrics:
     profiler_flops: Optional[int] = None#profiler 的FLOPS估算 torch的profiler
     achieved_tflops: Optional[float] = None#  理论/profiler的FLOPS
     estimated_memory_bytes: Optional[int] = None
-    arithmetic_intensity: Optional[float] = None#flop/byte 计算强度 单位内存流量承载了多少计算
+    estimated_arithmetic_intensity: Optional[float] = None#flop/byte 计算强度 单位内存流量承载了多少计算
     
 @dataclass
 class MemoryMetrics:

@@ -26,7 +26,7 @@ class TorchProfiler:
         self.trace_save_dir = trace_save_dir
         
     @torch.no_grad()
-    def profile(self,fn:Callable,) -> ProfileResult: 
+    def profile(self,fn:Callable,name:str='profile') -> ProfileResult: 
         #预热
         activitise = [ProfilerActivity.CPU]
         
@@ -49,34 +49,30 @@ class TorchProfiler:
         ) as prof:
             fn()
             
-            if torch.cuda.is_available():
+        if torch.cuda.is_available():
                 torch.cuda.synchronize()
 
         key_avg = prof.key_averages(group_by_input_shape=self.record_shapes)    
 
         # 填充指标
-        total_cuda_time_us = sum(
-            evt.self_cuda_time_total
-            for evt in key_avg
-        )
-        total_cpu_time_us = sum(
-            evt.self_cpu_time_total
-            for evt in key_avg
-        )
+        total = key_avg.total_average()
+
+        total_cuda_time_us = total.self_device_time_total
+        total_cpu_time_us = total.self_cpu_time_total
 
         # FLOPs求和：profiler里每个算子的flops，累加 ，仅是torch内部支持的
         total_flops = 0
         for evt in key_avg:
             if hasattr(evt, "flops") and evt.flops is not None:
                 total_flops += evt.flops
-        operator_table = key_avg.table(sort_by="self_cuda_time_total", row_limit=-1)
+        operator_table = key_avg.table(sort_by="self_device_time_total", row_limit=-1)
         
         profiler_memory_sum_mb = None
         if self.profile_memory:
             mem_bytes = 0
             for evt in key_avg:
-                if hasattr(evt,"self_memory_bytes"):
-                    mem_bytes +=evt.self_memory_bytes
+                if hasattr(evt,"self_device_memory_bytes"):
+                    mem_bytes +=evt.self_device_memory_bytes
             profiler_memory_sum_mb = mem_bytes/(1024**2)
         
         # 导出trace
@@ -84,7 +80,7 @@ class TorchProfiler:
         if self.trace_save_dir is not None:
             save_dir = Path(self.trace_save_dir)
             save_dir.mkdir(exist_ok=True, parents=True)
-            trace_file = save_dir / "profile_trace.json"
+            trace_file = save_dir / f"{name}.json"
             prof.export_chrome_trace(str(trace_file))
             trace_path = str(trace_file)
 

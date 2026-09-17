@@ -46,7 +46,7 @@ class BenchmarkRunner:
         # 4. memory/自定义 memory
         kv_cache_mb = None
         if case.memory_fn is not None:
-            kv_cache_mb = case.memory_fn
+            kv_cache_mb = case.memory_fn()
         
         memory = get_memory_stats(kv_cache_mb=kv_cache_mb)
         # ---------------------------------------
@@ -75,7 +75,7 @@ class BenchmarkRunner:
         #profiler
         profile_result = None
 
-        if self.enable_profiler:
+        if self.enable_profile:
             profile_result = self.profiler.profile(
                 case.fn,
                 name=case.name,
@@ -87,7 +87,7 @@ class BenchmarkRunner:
             if profile_result is not None else None),
             achieved_tflops=achieved_tflops,
             estimated_memory_bytes= estimated_memory_bytes,
-            arithmetic_intensity=arithmetic_intensity,
+            estimated_arithmetic_intensity=arithmetic_intensity,
         )
         # ---------------------------------------------------------
         return BenchmarkResult(
@@ -96,6 +96,8 @@ class BenchmarkRunner:
             timing=timing,
             compute=compute,
             memory=memory,
+            throughput=throughput,
+            throughput_unit=case.throughput_unit,
             profile=profile_result,
             metadata=case.metadata,
         )
