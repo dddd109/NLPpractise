@@ -42,4 +42,3 @@ def benchmark_cuda(
                   p90_ms=p90,
                   p99_ms=p99,
                   std_ms=std,)
-    # return start.elapsed_time(end)/iters

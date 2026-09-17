@@ -63,5 +63,9 @@ class BenchmarkResult:
     timing: TimingMetrics
     compute: ComputeMetrics
     memory: MemoryMetrics
-    profile:Optional[ProfileResult]
-    metadata: dict
+    
+    throughput: Optional[float] = None
+    throughput_unit: Optional[str] = None
+    
+    profile:Optional[ProfileResult] =None
+    metadata: dict = field(default_factory=dict)

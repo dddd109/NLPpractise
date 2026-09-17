@@ -18,4 +18,4 @@ class BenchmarkCase:
     metadata: dict = field(default_factory=dict)
     throughput_fn: Optional[
     Callable[[TimingMetrics, WorkloadInfo], float]
-]
+] = None

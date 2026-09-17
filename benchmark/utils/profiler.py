@@ -4,7 +4,7 @@ import torch
 from dataclasses import dataclass
 from torch.profiler import profile,ProfilerActivity
 from typing import Optional,Callable
-from ..result import ProfileResult,MemoryMetrics
+from ..result import ProfileResult
 from pathlib import Path
 
 class TorchProfiler:
@@ -12,7 +12,7 @@ class TorchProfiler:
                  record_shapes:bool=True,
                  profile_memory:bool=True,
                  with_flops:bool=True,
-                 with_stack:bool=False,
+                 with_stack:bool=False, #增加开销
                  warmup_times:int =3,
                  repeat_times: int =1,
                  trace_save_dir: Optional[str] = None,
@@ -26,35 +26,33 @@ class TorchProfiler:
         self.trace_save_dir = trace_save_dir
         
     @torch.no_grad()
-    def profile(self,fn:Callable,memory_metrics:Optional[MemoryMetrics]) -> ProfileResult: 
+    def profile(self,fn:Callable,) -> ProfileResult: 
         #预热
         activitise = [ProfilerActivity.CPU]
+        
         if torch.cuda.is_available():
             activitise.append(ProfilerActivity.CUDA)
             torch.cuda.empty_cache() # 清空显存碎片，减少memory统计干扰
+            
         # 预热
         for _ in range(self.warmup_times):
             fn()
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
-        
-        # 多次采样profile
-        prof_list = []
-        for _ in range(self.repeat_times):
             
-            with profile(
-                activities=activitise,
-                record_shapes=self.record_shapes,
-                profile_memory=self.profile_memory,
-                with_flops=self.with_flops,
-                with_stack=self.with_stack
-            ) as prof:
-                fn()
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
-                prof_list.append(prof)
-        prof = prof_list[-1]
-        key_avg = prof.key_averages()    
+        with profile(
+            activities=activitise,
+            record_shapes=self.record_shapes,
+            profile_memory=self.profile_memory,
+            with_flops=self.with_flops,
+            with_stack=self.with_stack
+        ) as prof:
+            fn()
+            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+
+        key_avg = prof.key_averages(group_by_input_shape=self.record_shapes)    
 
         # 填充指标
         total_cuda_time_us = sum(
@@ -65,14 +63,14 @@ class TorchProfiler:
             evt.self_cpu_time_total
             for evt in key_avg
         )
-        operator_table = key_avg.table(sort_by="self_cuda_time_total", row_limit=-1)
 
-        # FLOPs求和：profiler里每个算子的flops，累加
+        # FLOPs求和：profiler里每个算子的flops，累加 ，仅是torch内部支持的
         total_flops = 0
         for evt in key_avg:
             if hasattr(evt, "flops") and evt.flops is not None:
                 total_flops += evt.flops
-                
+        operator_table = key_avg.table(sort_by="self_cuda_time_total", row_limit=-1)
+        
         profiler_memory_sum_mb = None
         if self.profile_memory:
             mem_bytes = 0
@@ -101,17 +99,8 @@ class TorchProfiler:
             "device": "cuda" if torch.cuda.is_available() else "cpu",
             "profile_total_tensor_mb":profiler_memory_sum_mb, #profile算子内存总和
         }
-        
-        if memory_metrics is not None:
-            metadata["memory_metrics"] = {
-                "allocated_mb": memory_metrics.allocated_mb,
-                "reserved_mb": memory_metrics.reserved_mb,
-                "peak_allocated_mb": memory_metrics.peak_allocated_mb,
-                "peak_reserved_mb": memory_metrics.peak_reserved_mb,
-                "kv_cache_mb": memory_metrics.kv_cache_mb,
-            }
             
-        res = ProfileResult(
+        return  ProfileResult(
             total_cuda_time_us=total_cuda_time_us,
             total_cpu_time_us=total_cpu_time_us,
             profiler_flops=total_flops,
@@ -119,4 +108,3 @@ class TorchProfiler:
             trace_path=trace_path,
             metadata=metadata,
         )
-        return res
