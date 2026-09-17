@@ -1,5 +1,10 @@
 # benchmark/utils/flop.py
 
+def flops_to_tflops(
+    theoretical_flops:float,
+    ms:float
+)->float:
+    return theoretical_flops/ms/1e9
 
 def matmul_flops(
     m: int,
