@@ -60,9 +60,7 @@ class ProfileResult:
     total_cpu_time_us: Optional[float] = None
 
     profiler_flops: Optional[int] = None
-
     operator_table: Optional[str] = None
-
     trace_path: Optional[str] = None
 
     metadata: dict = field(default_factory=dict)

@@ -4,7 +4,7 @@ import torch
 from dataclasses import dataclass
 from torch.profiler import profile,ProfilerActivity
 from typing import Optional,Callable
-from ..result import ProfileResult
+from ..result import ProfileResult,MemoryMetrics
 from pathlib import Path
 
 class TorchProfiler:
@@ -26,7 +26,7 @@ class TorchProfiler:
         self.trace_save_dir = trace_save_dir
         
     @torch.no_grad()
-    def profile(self,fn:Callable) -> ProfileResult: 
+    def profile(self,fn:Callable,memory_metrics:Optional[MemoryMetrics]) -> ProfileResult: 
         #预热
         activitise = [ProfilerActivity.CPU]
         if torch.cuda.is_available():
@@ -66,8 +66,16 @@ class TorchProfiler:
         for evt in key_avg:
             if hasattr(evt, "flops") and evt.flops is not None:
                 total_flops += evt.flops
-
-        # 导出trace文件
+                
+        profiler_memory_sum_mb = None
+        if self.profile_memory:
+            mem_bytes = 0
+            for evt in key_avg:
+                if hasattr(evt,"self_memory_bytes"):
+                    mem_bytes +=evt.self_memory_bytes
+            profiler_memory_sum_mb = mem_bytes/(1024**2)
+        
+        # 导出trace
         trace_path: Optional[str] = None
         if self.trace_save_dir is not None:
             save_dir = Path(self.trace_save_dir)
@@ -85,8 +93,18 @@ class TorchProfiler:
             "with_flops": self.with_flops,
             "with_stack": self.with_stack,
             "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "profile_total_tensor_mb":profiler_memory_sum_mb, #profile算子内存总和
         }
-
+        
+        if memory_metrics is not None:
+            metadata["memory_metrics"] = {
+                "allocated_mb": memory_metrics.allocated_mb,
+                "reserved_mb": memory_metrics.reserved_mb,
+                "peak_allocated_mb": memory_metrics.peak_allocated_mb,
+                "peak_reserved_mb": memory_metrics.peak_reserved_mb,
+                "kv_cache_mb": memory_metrics.kv_cache_mb,
+            }
+            
         res = ProfileResult(
             total_cuda_time_us=total_cuda_time_us,
             total_cpu_time_us=total_cpu_time_us,
