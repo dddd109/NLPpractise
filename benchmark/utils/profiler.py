@@ -4,12 +4,7 @@ import torch
 from dataclasses import dataclass
 from torch.profiler import profiler,ProfilerAction
 from typing import Optional
-@dataclass
-class ProfileResult:
-    total_flops: Optional[int] = None
-    total_cuda_time_us: float
-    total_cpu_time_us: float
-    table: str
+from ..result import ProfileResult
 
 class TorchProfiler:
     def __init__(self,

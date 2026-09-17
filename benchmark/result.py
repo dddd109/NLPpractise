@@ -30,15 +30,15 @@ class TimingMetrics:
 @dataclass
 class ComputeMetrics:
 
-    theoretical_flops: Optional[int] = None#理论值
-    profiler_flops: Optional[int] = None#profiler 的FLOPS估算
-    achieved_tflops: Optional[float] = None# flops/time 吞吐
+    theoretical_flops: Optional[int] = None#理论值 
+    profiler_flops: Optional[int] = None#profiler 的FLOPS估算 torch的profiler
+    achieved_tflops: Optional[float] = None#  理论/profiler的FLOPS
     arithmetic_intensity: Optional[float] = None#flop/byte 计算强度 单位内存流量承载了多少计算
     
 @dataclass
 class MemoryMetrics:
     allocated_mb:Optional[float] = None
-    reserved_md:Optional[float] = None
+    reserved_mb:Optional[float] = None
     peak_allocated_mb:Optional[float] = None
     peak_reserved_mb:Optional[float] = None
     kv_cache_mb:Optional[float] = None
@@ -52,3 +52,17 @@ class BenchmarkResult:
     compute: ComputeMetrics
     memory: MemoryMetrics
     metadata: dict
+    
+@dataclass
+class ProfileResult:
+
+    total_cuda_time_us: Optional[float] = None
+    total_cpu_time_us: Optional[float] = None
+
+    profiler_flops: Optional[int] = None
+
+    operator_table: Optional[str] = None
+
+    trace_path: Optional[str] = None
+
+    metadata: dict = field(default_factory=dict)

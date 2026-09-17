@@ -2,6 +2,7 @@
 
 import torch
 
+
 from .case import BenchmarkCase
 from .result import BenchmarkResult
 from .utils.timer import benchmark_cuda
@@ -10,6 +11,7 @@ from .utils.memory import (
     get_memory_stats
 )
 from .utils.flop import flops_to_tflops
+from .utils.profiler import TorchProfiler
 
 class BenchmarkRunner:
     def __init__(self,warmup:int=10,iters:int=100):
@@ -41,7 +43,15 @@ class BenchmarkRunner:
                 theoretical_flops,
                 timing.mean,
             )
-
+        #profiler
+        profiler = TorchProfiler()
+        prof = profiler.profile(case.fn)
+        print(
+        prof.key_averages().table(
+        sort_by="cuda_time_total",
+        row_limit=20,
+    )
+)
         return BenchmarkResult(
             name=case.name,
             workload=,

@@ -20,7 +20,7 @@ def get_memory_stats():
     单位：MB
     """
     return MemoryMetrics(allocated_mb=torch.cuda.memory_allocated() / 1024**2,
-                         reserved_md=torch.cuda.memory_reserved() / 1024**2,
+                         reserved_mb=torch.cuda.memory_reserved() / 1024**2,
                          peak_allocated_mb=torch.cuda.max_memory_allocated() / 1024**2,
                          peak_reserved_mb=torch.cuda.max_memory_reserved() / 1024**2,
                          kv_cache_mb=)
