@@ -4,13 +4,6 @@ from typing import Callable
 import torch
 from ..result import TimingMetrics
 
-def get_percent(array,percent):
-    iters = len(array)
-    if iters*percent%1==0: 
-        out = (array[iters*percent] + array[iters*percent+1])/2
-    out = array[int(iters*percent)+1]
-    return out
-
 def benchmark_cuda(
         fn:Callable,
         warmup:int = 20,
@@ -34,13 +27,14 @@ def benchmark_cuda(
         fn()
         end.record()
         torch.cuda.synchronize()
-        time.qppend(start.elapsed_time(end))
-    time=np.array(time.sort())
+        time.append(start.elapsed_time(end))
+    time=np.array(time)
+    time.sort()
     mean = time.mean()
-    median = get_percent(time,0.5)
-    p50 = median
-    p90 = get_percent(time,0.9)
-    p99 = get_percent(time,0.99)
+    p50 = np.percentile(time, 50)
+    median = p50
+    p90 = np.percentile(time, 90)
+    p99 = np.percentile(time, 99)
     std = time.std()
     return TimingMetrics(mean_ms=mean,
                   median_ms=median,
