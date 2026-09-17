@@ -42,16 +42,6 @@ class MemoryMetrics:
     peak_allocated_mb:Optional[float] = None
     peak_reserved_mb:Optional[float] = None
     kv_cache_mb:Optional[float] = None
-
-@dataclass
-class BenchmarkResult:
-
-    name: str
-    workload: WorkloadInfo
-    timing: TimingMetrics
-    compute: ComputeMetrics
-    memory: MemoryMetrics
-    metadata: dict
     
 @dataclass
 class ProfileResult:
@@ -64,3 +54,14 @@ class ProfileResult:
     trace_path: Optional[str] = None
 
     metadata: dict = field(default_factory=dict)
+    
+@dataclass
+class BenchmarkResult:
+
+    name: str
+    workload: WorkloadInfo
+    timing: TimingMetrics
+    compute: ComputeMetrics
+    memory: MemoryMetrics
+    profile:Optional[ProfileResult]
+    metadata: dict

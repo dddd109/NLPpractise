@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from typing import Callable,Any,Optional
-from .result import WorkloadInfo
+from .result import WorkloadInfo,TimingMetrics
 
 @dataclass
 class BenchmarkCase:
@@ -17,5 +17,5 @@ class BenchmarkCase:
     memory_fn: Optional[Callable[[], float]] = None
     metadata: dict = field(default_factory=dict)
     throughput_fn: Optional[
-        Callable[[float], float]
-    ] = None
+    Callable[[TimingMetrics, WorkloadInfo], float]
+]

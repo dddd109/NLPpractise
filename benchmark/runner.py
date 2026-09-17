@@ -19,7 +19,8 @@ class BenchmarkRunner:
         self.iters = iters
 
     @torch.no_grad()
-    def run(self,case:BenchmarkCase,) -> BenchmarkResult:
+    def run(self,case:BenchmarkCase,
+            enable_profile:bool=False) -> BenchmarkResult:
         # 1. reset memory statistics
         reset_peak_memory()
         # 2. latency
@@ -44,13 +45,14 @@ class BenchmarkRunner:
                 timing.mean,
             )
         #profiler
-        profiler = TorchProfiler()
-        prof = profiler.profile(case.fn)
-        print(
-        prof.key_averages().table(
-        sort_by="cuda_time_total",
-        row_limit=20,
-    )
+        if enable_profile:
+            profiler = TorchProfiler()
+            prof = profiler.profile(case.fn,memory)
+            print(
+            prof.key_averages().table(
+            sort_by="cuda_time_total",
+            row_limit=20,
+        )
 )
         return BenchmarkResult(
             name=case.name,
@@ -58,5 +60,6 @@ class BenchmarkRunner:
             timing=timing,
             compute=,
             memory=memory,
+            profile=prof,
             metadata=,
         )

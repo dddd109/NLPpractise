@@ -57,8 +57,14 @@ class TorchProfiler:
         key_avg = prof.key_averages()    
 
         # 填充指标
-        total_cuda_time_us = key_avg.self_cuda_time_total
-        total_cpu_time_us = key_avg.self_cpu_time_total
+        total_cuda_time_us = sum(
+            evt.self_cuda_time_total
+            for evt in key_avg
+        )
+        total_cpu_time_us = sum(
+            evt.self_cpu_time_total
+            for evt in key_avg
+        )
         operator_table = key_avg.table(sort_by="self_cuda_time_total", row_limit=-1)
 
         # FLOPs求和：profiler里每个算子的flops，累加
