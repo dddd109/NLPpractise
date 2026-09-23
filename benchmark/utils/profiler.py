@@ -2,7 +2,7 @@
 
 import torch
 from dataclasses import dataclass
-from torch.profiler import profile,ProfilerActivity
+from torch.profiler import profile,ProfilerActivity,DeviceType
 from typing import Optional,Callable
 from ..result import ProfileResult
 from pathlib import Path
@@ -55,10 +55,13 @@ class TorchProfiler:
         key_avg = prof.key_averages(group_by_input_shape=self.record_shapes)    
 
         # 填充指标
-        total = key_avg.total_average()
+        total_cpu_time_us = key_avg.total_average().self_cpu_time_total
 
-        total_cuda_time_us = total.self_device_time_total
-        total_cpu_time_us = total.self_cpu_time_total
+        total_cuda_time_us = sum(
+            evt.self_device_time_total
+            for evt in prof.events()
+            if evt.device_type == DeviceType.CUDA
+        )
 
         # FLOPs求和：profiler里每个算子的flops，累加 ，仅是torch内部支持的
         total_flops = 0
