@@ -1,0 +1,11 @@
+numpy
+tqdm
+requests
+pyyaml
+safetensors
+transformers
+datasets
+tokenizers
+sentencepiece
+numpy
+tiktoken

@@ -1,0 +1,4 @@
+# Torch / TorchNPU are managed by the Ascend environment.
+# Do not pip install torch here.
+
+accelerate

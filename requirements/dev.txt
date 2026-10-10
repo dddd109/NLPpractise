@@ -1,0 +1,6 @@
+ipython
+jupyter
+pytest
+ruff
+matplotlib
+tensorboard

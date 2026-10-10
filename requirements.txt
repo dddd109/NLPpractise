@@ -1,4 +1,4 @@
-torch==2.6.0
+torch
 numpy
 tqdm
 tiktoken
