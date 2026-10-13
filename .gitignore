@@ -2,3 +2,9 @@
 /.vscode
 *.pyc
 fusion_result.json
+
+# 数据与日志（体积大，不进版本库）
+/data/raw/
+/data/tokenized/
+/logs/
+*.orig
