@@ -1,0 +1,21 @@
+# GQA：MHA 与 MQA 的折中
+#   n_kv_head == n_head -> 等价 MHA；n_kv_head == 1 -> 等价 MQA
+# 这里取 4，即每 3 个 Q 头共享 1 组 K/V。
+#
+# 试算：
+#   python -m runtime.config --config configs/model/gqa_small.yaml
+#   python -m runtime.config --config configs/model/gqa_small.yaml --set train.lr=1e-4
+extends: ../train/base.yaml
+
+model:
+  arch: gqa
+  n_layer: 12
+  n_head: 12
+  n_kv_head: 4
+  n_embd: 768
+  block_size: 1024
+  vocab_size: 50304          # 补到接近 2 的幂次，对 kernel 更友好
+  norm: rmsnorm
+  ffn: swiglu
+  pos: rope
+  rope: true

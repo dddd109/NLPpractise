@@ -1,0 +1,23 @@
+# MLA：低秩压缩 KV（DeepSeek-V2 式），推理时只缓存 latent
+# 每 token 缓存量 = kv_lora_rank + qk_rope_head_dim = 512 + 64 = 576
+# 同规模标准 MHA 每 token 缓存量 = 2 * n_head * head_dim = 2 * 12 * 64 = 1536
+#
+# 试算：
+#   python -m runtime.config --config configs/model/mla_small.yaml
+extends: ../train/base.yaml
+
+model:
+  arch: mla
+  n_layer: 12
+  n_head: 12
+  n_embd: 768
+  block_size: 1024
+  vocab_size: 50304
+  kv_lora_rank: 512
+  qk_nope_head_dim: 64
+  qk_rope_head_dim: 64
+  v_head_dim: 64
+  norm: rmsnorm
+  ffn: swiglu
+  pos: rope
+  rope: true

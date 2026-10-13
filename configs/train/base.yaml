@@ -1,0 +1,31 @@
+# 训练侧公共默认值（模型结构另见 configs/model/*.yaml）
+#
+# 用法：
+#   python -m runtime.config --config configs/model/gqa_small.yaml
+#   python -m runtime.config --config configs/model/gqa_small.yaml --set train.lr=1e-4
+train:
+  max_steps: 19073
+  warmup_steps: 715
+  micro_batch_size: 4        # 单卡 micro batch
+  seq_len: 1024
+  total_batch_size: 524288   # 梯度累积之后的全局 token 数
+  lr: 6.0e-4
+  min_lr_ratio: 0.1
+  weight_decay: 0.1
+  grad_clip: 1.0
+  dtype: auto                # 交给 runtime.device.autocast_dtype 决定：NPU->fp16, CUDA->bf16
+  log_every: 100
+  eval_every: 100
+
+data:
+  train_bin: data/tokenized/fineweb_gpt2/train.bin
+  val_bin: data/tokenized/fineweb_gpt2/val.bin
+  storage_dtype: uint16      # scripts/data/tokenize_fineweb.py 写出来的就是 uint16
+  tokenizer: tiktoken:gpt2
+  vocab_size: 50257
+
+run:
+  seed: 1337
+  backend: auto              # runtime.device 自动选择 npu -> cuda -> cpu
+  device_index: 0
+  out_dir: runs/scratch
