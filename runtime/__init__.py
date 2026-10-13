@@ -6,8 +6,10 @@
 
 from .config import (
     ARCH_REGISTRY_NAMES,
+    FFN_REGISTRY_NAMES,
     Config,
     build_attention,
+    build_ffn,
     deep_merge,
     load_config,
     parse_overrides,
@@ -39,8 +41,10 @@ from .device import (
 __all__ = [
     # config
     "ARCH_REGISTRY_NAMES",
+    "FFN_REGISTRY_NAMES",
     "Config",
     "build_attention",
+    "build_ffn",
     "deep_merge",
     "load_config",
     "parse_overrides",

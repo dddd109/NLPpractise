@@ -1,0 +1,31 @@
+# MoE 版本：attention 用 GQA，前馈层换成 top-k 路由的 MoE（Mixtral / DeepSeekMoE 风格）
+#
+# 关键区别：**总参数量大，但每个 token 只激活一小部分**
+#   E=8 个路由专家 + top_k=2 + 1 个共享专家
+#   -> 每 token 激活 ≈ 2 个专家 + 1 个共享专家 + router
+# 用 modules/moe/MoEFFN.py 的 describe() 能看到具体的激活率。
+#
+# 试算：
+#   python -m runtime.config --config configs/model/moe_small.yaml
+extends: ../train/base.yaml
+
+model:
+  arch: gqa
+  n_layer: 12
+  n_head: 12
+  n_kv_head: 4
+  n_embd: 768
+  block_size: 1024
+  vocab_size: 50304
+  norm: rmsnorm
+  ffn: moe
+  pos: rope
+  rope: true
+  # --- MoE 专用（只有 ffn: moe 时才会被用到，其它架构会忽略这些键）---
+  ffn_hidden_dim: 768          # 单个专家的隐层维度（比 dense 的 4x 小）
+  num_experts: 8
+  top_k: 2
+  shared_experts: 1
+  aux_loss_coef: 0.01
+  z_loss_coef: 0.0
+  router_jitter: 0.01          # 训练时给 router logits 加的噪声（打破 top-k 打平）

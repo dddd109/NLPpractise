@@ -6,6 +6,7 @@ from .attention.MQA import MQA, MQAConfig
 from .attention.GQA import GQA, GQAConfig
 from .attention.MLA import MLA, MLAConfig
 from .ffn.SWiGLU import SwiGLU
+from .moe.MoEFFN import MoEFFN, MoEFFNConfig
 
 __all__ = [
     "RoPE",
@@ -19,4 +20,6 @@ __all__ = [
     "MLA",
     "MLAConfig",
     "SwiGLU",
+    "MoEFFN",
+    "MoEFFNConfig",
 ]

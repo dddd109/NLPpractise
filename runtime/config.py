@@ -31,11 +31,12 @@ import inspect
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type
 
 SECTIONS: Tuple[str, ...] = ("model", "train", "data", "run")
 
 ARCH_REGISTRY_NAMES: Tuple[str, ...] = ("mha", "mqa", "gqa", "mla")
+FFN_REGISTRY_NAMES: Tuple[str, ...] = ("gelu", "swiglu", "moe")
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +235,51 @@ def build_attention(cfg: Config, layer_idx: Optional[int] = None):
         return impl(arch_cfg)
 
 
+def _ffn_builders() -> Dict[str, "Callable[[Dict[str, Any]], Any]"]:
+    """FFN 构建器：yaml 里写 ``ffn: moe`` 就能切到 MoE 前馈层。
+
+    这里用"函数式构建器"而不是 ``(类, config类)`` 对，是因为像 ``SwiGLU`` 这种
+    老模块的签名要求显式 ``hidden_dim``，需要在构建时补默认值。
+    """
+    from modules.ffn.GeLU import GeLUFFN
+    from modules.ffn.SWiGLU import SwiGLU
+    from modules.moe.MoEFFN import MoEFFN, MoEFFNConfig
+
+    def _dim(model_cfg: Dict[str, Any]) -> int:
+        if "n_embd" not in model_cfg:
+            raise KeyError("构建 FFN 需要 model.n_embd")
+        return int(model_cfg["n_embd"])
+
+    def _hidden(model_cfg: Dict[str, Any], dim: int) -> int:
+        return int(model_cfg.get("ffn_hidden_dim", 4 * dim))
+
+    def _swiglu(model_cfg: Dict[str, Any]):
+        dim = _dim(model_cfg)
+        return SwiGLU(dim=dim, hidden_dim=_hidden(model_cfg, dim))
+
+    def _gelu(model_cfg: Dict[str, Any]):
+        dim = _dim(model_cfg)
+        return GeLUFFN(dim=dim, hidden_dim=_hidden(model_cfg, dim))
+
+    def _moe(model_cfg: Dict[str, Any]):
+        data = _filter_kwargs(model_cfg, MoEFFNConfig)
+        data.setdefault("dim", _dim(model_cfg))
+        data.setdefault("hidden_dim", _hidden(model_cfg, data["dim"]))
+        return MoEFFN(MoEFFNConfig(**data))
+
+    return {"gelu": _gelu, "swiglu": _swiglu, "moe": _moe}
+
+
+def build_ffn(cfg: Config):
+    """按 ``cfg.model["ffn"]`` 构造前馈层（gelu / swiglu / moe）。"""
+    model_cfg = dict(cfg.model)
+    name = str(model_cfg.get("ffn", "swiglu")).lower()
+    builders = _ffn_builders()
+    if name not in builders:
+        raise KeyError(f"未知 FFN {name!r}；已注册：{sorted(builders)}")
+    return builders[name](model_cfg)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="配置入口：dataclass 默认值 < YAML < --set 覆盖"
@@ -254,9 +300,11 @@ def main() -> None:
 
 __all__ = [
     "ARCH_REGISTRY_NAMES",
+    "FFN_REGISTRY_NAMES",
     "SECTIONS",
     "Config",
     "build_attention",
+    "build_ffn",
     "deep_merge",
     "load_config",
     "load_yaml",
