@@ -24,14 +24,17 @@
         torch.save(...)                 # 只有 rank0 写盘，避免 7 个进程抢同一个文件
     cleanup(ctx)
 
-启动（本机物理卡 3 的 Health=Critical，用 ASCEND_RT_VISIBLE_DEVICES 把它排除）::
+启动（本机 8 张卡都可用 —— 物理卡 3 的 ``Health`` 显示 ``Critical``，但实测 matmul /
+注意力前向都正常，那只是个状态标志，不影响计算）::
 
-    ASCEND_RT_VISIBLE_DEVICES=0,1,2,4,5,6,7 \
-        torchrun --nproc_per_node=7 models/build_models.py -C configs/pretrain/pretrain_llama.yaml
+    torchrun --nproc_per_node=8 models/build_models.py -C configs/pretrain/pretrain_llama.yaml
 
-⚠️ ``ASCEND_RT_VISIBLE_DEVICES`` 把物理卡**重映射**成逻辑 0..6，所以 ``LOCAL_RANK``
-指的是"可见列表里的下标"，不是物理卡号。例如上面这个映射里，LOCAL_RANK=3 其实对应
-物理卡 4。
+确实要屏蔽某张卡时再用 ``ASCEND_RT_VISIBLE_DEVICES`` 重映射，例如只留 7 张::
+
+    ASCEND_RT_VISIBLE_DEVICES=0,1,2,4,5,6,7 torchrun --nproc_per_node=7 ...
+
+⚠️ ``ASCEND_RT_VISIBLE_DEVICES`` 把物理卡**重映射**成逻辑 0..N-1，所以 ``LOCAL_RANK``
+指的是"可见列表里的下标"，不是物理卡号。
 """
 
 from __future__ import annotations
@@ -120,12 +123,21 @@ def setup(timeout_minutes: int = 30, device_type: Optional[str] = None) -> DistC
     device = get_device(device_type, local_rank)
     set_device(device)
 
-    dist.init_process_group(
+    # device_id 只是用来消掉 "barrier(): using the device under current context"
+    # 那条 UserWarning；老版本 torch 不认这个参数，退回不带它的调用。
+    pg_kwargs = dict(
         backend=backend,
         rank=rank,
         world_size=world_size,
         timeout=datetime.timedelta(minutes=timeout_minutes),
     )
+    if device.type != "cpu":
+        try:
+            dist.init_process_group(device_id=device, **pg_kwargs)
+        except TypeError:
+            dist.init_process_group(**pg_kwargs)
+    else:
+        dist.init_process_group(**pg_kwargs)
 
     ctx = DistContext(True, backend, rank, local_rank, world_size, device)
     print(ctx, flush=True)

@@ -6,15 +6,20 @@
 
     python models/build_models.py -C configs/pretrain/pretrain_llama.yaml
 
-多卡（本机物理卡 3 的 Health=Critical，先把它排除，用剩下 7 张）::
+多卡（本机 8 张卡都能用；物理卡 3 的 Health 显示 Critical 但实测计算正常）::
 
-    ASCEND_RT_VISIBLE_DEVICES=0,1,2,4,5,6,7 \
-    torchrun --nproc_per_node=7 models/build_models.py -C configs/pretrain/pretrain_llama.yaml
+    torchrun --nproc_per_node=8 models/build_models.py -C configs/pretrain/pretrain_llama.yaml
 
-冒烟测试（20 步，确认多卡链路通）::
+**只验证多卡链路、不训练**（建组 → 建模型 → DDP → 一次前向+反向 → 检查梯度同步，
+不调用 optimizer.step，权重不变）::
 
-    ASCEND_RT_VISIBLE_DEVICES=0,1,2,4,5,6,7 \
-    torchrun --nproc_per_node=7 models/build_models.py --max-steps 20 --log-every 1
+    torchrun --nproc_per_node=8 models/build_models.py -C configs/pretrain/pretrain_llama.yaml \
+        --dry-run --seq-len 128 --micro-batch-size 1 --grad-accum 1
+
+真跑训练::
+
+    torchrun --nproc_per_node=8 models/build_models.py -C configs/pretrain/pretrain_llama.yaml \
+        --max-steps 20000
 
 设计约定
 --------
@@ -117,6 +122,12 @@ def parse_args():
         "--verbose-init",
         action="store_true",
         help="逐参数打印初始化的形状（默认只打一行汇总，多卡下别开）",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="只验证多卡链路后退出：建组 → 建模型 → DDP 包装 → 跑一次前向+反向"
+             " → 检查各 rank 梯度是否已同步。**不做 optimizer.step()，权重不变**",
     )
     return parser.parse_args()
 
@@ -368,6 +379,55 @@ def evaluate(model, loader, device, eval_iters: int, ctx) -> float:
     return float(mean)
 
 
+def dry_run_check(model, raw_model, loader, cfg, ctx) -> None:
+    """多卡链路自检（不训练）。
+
+    验证三件事：
+      1. 每个 rank 绑到了不同的 NPU（``[dist]`` 那行已经打了）；
+      2. 数据分片互不重叠（各 rank 的 batch 起点不同、内容不同）；
+      3. 前向 + 反向 + DDP 梯度同步都通 —— 做法是把某个参数的梯度前 64 个数
+         和全局平均对比，偏差应当≈0（说明 all_reduce 已经把各 rank 的梯度抹平）。
+
+    ⚠️ 只做一次前向+反向，**不调用 optimizer.step()**，所以权重不会被更新。
+    """
+    B, T = loader.B, loader.T
+    start = B * T * ctx.rank
+    x, y = loader.next_batch()
+    print(
+        f"[dry-run][rank {ctx.rank}] device={ctx.device} "
+        f"数据起点 token[{start}:{start + B * T}] "
+        f"x.shape={tuple(x.shape)} x.sum()={int(x.sum())}",
+        flush=True,
+    )
+
+    x, y = x.to(ctx.device), y.to(ctx.device)
+    model.train()
+    with autocast(ctx.device):
+        _, loss = model(x, y)
+    loss.backward()                      # 触发 DDP 的梯度 all_reduce
+
+    # 找一个有梯度的参数，取前 64 个数：DDP 同步后各 rank 这 64 个数应完全相同
+    grad_sample = None
+    for p in raw_model.parameters():
+        if p.grad is not None:
+            grad_sample = p.grad.detach().float().flatten()[:64].clone()
+            break
+    if grad_sample is not None:
+        mean = all_reduce_mean(grad_sample)
+        dev = float((grad_sample - mean).abs().max())
+    else:
+        dev = float("nan")
+
+    gmean = all_reduce_mean(loss.detach().float())
+    print(
+        f"[dry-run][rank {ctx.rank}] loss={float(loss.detach()):.4f} "
+        f"loss(全局平均)={float(gmean):.4f} "
+        f"|grad - 全局平均grad|={dev:.3e} "
+        f"{'OK（DDP 同步生效）' if dev < 1e-5 else '⚠️ 偏差偏大，检查 DDP'}",
+        flush=True,
+    )
+
+
 def main():
     args = parse_args()
     cfg = resolve_config(args)
@@ -402,6 +462,12 @@ def main():
     model.to(device)
     model = wrap_model(model, ctx)        # 单卡时原样返回
     raw_model = model.module if ctx.enabled else model
+
+    if args.dry_run:
+        dry_run_check(model, raw_model, train_loader, cfg, ctx)
+        rank0_print(ctx, "[dry-run] 链路检查完成，未做任何参数更新（没有 optimizer.step）")
+        cleanup(ctx)
+        return
 
     optimizer = torch.optim.AdamW(
         raw_model.parameters(),
