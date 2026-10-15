@@ -37,6 +37,7 @@ import torch.nn.functional as F
 from ..cache.base import BaseKVCache
 from ..positional.RoPE import RoPE
 from .base import Attention
+from .masking import CausalMaskCache, neg_inf
 
 
 @dataclass
@@ -109,6 +110,7 @@ class MLA(Attention):
         self.w_o = nn.Linear(c.n_head * c.v_head_dim, c.n_embd, bias=False)
 
         self.rope = RoPE(c.qk_rope_head_dim) if c.rope else None
+        self._mask = CausalMaskCache()
 
     def forward(
         self,
@@ -161,10 +163,9 @@ class MLA(Attention):
         att = (q @ k.transpose(-1, -2)) * (1.0 / math.sqrt(self.config.qk_head_dim))
 
         # 与 GQA 相同的掩码约定：query i 能看到的 key 下标上限是 cached_before + i
-        mask = torch.ones(T, Tk, device=x.device, dtype=torch.bool).tril(
-            diagonal=cached_before
-        )
-        att = att.masked_fill(~mask, float("-inf"))
+        # （掩码按 (T, Tk, offset) 缓存，不再每层每步重建）
+        mask = self._mask.get(T, Tk, cached_before, x.device)
+        att = att.masked_fill(~mask, neg_inf(att.dtype))
         att = F.softmax(att, dim=-1)
         out = att @ v                                 # B,H,T,d_v
 

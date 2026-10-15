@@ -35,6 +35,26 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type
 
 SECTIONS: Tuple[str, ...] = ("model", "train", "data", "run")
 
+# 段名别名：yaml 里写 training: 等价于 train:（兼容老配置）
+SECTION_ALIASES: Dict[str, str] = {"training": "train"}
+
+# 模型字段别名：把 HF 风格的命名映射到内部名字，这样不同风格的 yaml 都能直接用
+MODEL_KEY_ALIASES: Dict[str, str] = {
+    "hidden_size": "n_embd",
+    "context_length": "block_size",
+    "max_position_embeddings": "block_size",
+    "num_attention_heads": "n_head",
+    "num_key_value_heads": "n_kv_head",
+    "intermediate_size": "ffn_hidden_dim",
+    "num_hidden_layers": "n_layer",
+}
+_ROPE_NAMES_TRUE = ("rope", "rotary", "rope2d")
+_ROPE_NAMES_FALSE = ("none", "learned", "absolute", "abs")
+
+
+def _canonical_section(name: str) -> str:
+    return SECTION_ALIASES.get(name, name)
+
 ARCH_REGISTRY_NAMES: Tuple[str, ...] = ("mha", "mqa", "gqa", "mla")
 FFN_REGISTRY_NAMES: Tuple[str, ...] = ("gelu", "swiglu", "moe")
 
@@ -55,6 +75,35 @@ class Config:
 
     def to_dict(self) -> Dict[str, Any]:
         return {name: copy.deepcopy(getattr(self, name)) for name in SECTIONS}
+
+    # ---- 兼容两种取值风格 ------------------------------------------------
+    #   cfg.model["n_embd"]      （属性 + 下标）
+    #   cfg["model"]["n_embd"]   （纯字典风格，老脚本里到处都是这种写法）
+    def __getitem__(self, key: str) -> Any:
+        key = _canonical_section(key)
+        if key in SECTIONS:
+            return getattr(self, key)
+        if key == "sources":
+            return self.sources
+        raise KeyError(key)
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        key = _canonical_section(key)
+        if key not in SECTIONS:
+            raise KeyError(f"{key!r} 不是配置段，可选 {SECTIONS}")
+        setattr(self, key, value)
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, str):
+            return False
+        key = _canonical_section(key)
+        return key in SECTIONS or key == "sources"
+
+    def keys(self) -> Tuple[str, ...]:
+        return SECTIONS
+
+    def items(self):
+        return ((name, getattr(self, name)) for name in SECTIONS)
 
     def dumps(self) -> str:
         payload = {"sources": self.sources, **self.to_dict()}
@@ -176,6 +225,14 @@ def load_config(
     cfg = Config(sources=sources)
     for name in SECTIONS:
         setattr(cfg, name, merged.pop(name, {}) or {})
+    # 段名别名（training -> train）：两边都写了就深合并，别名不覆盖正式名
+    for alias, target in SECTION_ALIASES.items():
+        if alias in merged:
+            setattr(
+                cfg,
+                target,
+                deep_merge(getattr(cfg, target), merged.pop(alias) or {}),
+            )
     # 没归类的顶层键不丢，塞进 run
     if merged:
         cfg.run = deep_merge(cfg.run, merged)
@@ -211,14 +268,40 @@ def _filter_kwargs(data: Dict[str, Any], target: Type) -> Dict[str, Any]:
     return {k: v for k, v in data.items() if k in allowed}
 
 
+def normalize_model_cfg(model_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """把常见的字段命名变体统一成内部名字，让不同风格的 yaml 都能直接用。
+
+    例：HF 风格写 ``hidden_size`` / ``context_length`` / ``num_key_value_heads`` /
+    ``intermediate_size``，内部用 ``n_embd`` / ``block_size`` / ``n_kv_head`` /
+    ``ffn_hidden_dim``；``position_embedding: rope`` 等价于 ``rope: true``。
+    """
+    out = dict(model_cfg)
+    for alias, canonical in MODEL_KEY_ALIASES.items():
+        if alias in out and canonical not in out:
+            out[canonical] = out[alias]
+
+    if "rope" not in out:
+        pe = str(out.get("position_embedding") or out.get("pos") or "").lower()
+        if pe in _ROPE_NAMES_TRUE:
+            out["rope"] = True
+        elif pe in _ROPE_NAMES_FALSE:
+            out["rope"] = False
+    return out
+
+
+def select_arch(model_cfg: Dict[str, Any]) -> str:
+    """架构名：``arch`` 优先，其次 ``attention``（两种写法都接受）。"""
+    return str(model_cfg.get("arch") or model_cfg.get("attention") or "mqa").lower()
+
+
 def build_attention(cfg: Config, layer_idx: Optional[int] = None):
-    """按 ``cfg.model["arch"]`` 构造 attention 模块。
+    """按 ``cfg.model["arch"]``（或 ``model["attention"]``）构造 attention 模块。
 
     ``configs/model/*.yaml`` 里多写的字段（n_layer / vocab_size / norm ...）会被忽略，
     只有目标架构认识的字段才传下去 —— 所以一份 model 配置能喂给不同架构。
     """
-    model_cfg = dict(cfg.model)
-    arch = str(model_cfg.get("arch", "mqa")).lower()
+    model_cfg = normalize_model_cfg(cfg.model)
+    arch = select_arch(model_cfg)
     registry = _attn_registry()
     if arch not in registry:
         raise KeyError(f"未知架构 {arch!r}；已注册：{sorted(registry)}")
@@ -272,7 +355,7 @@ def _ffn_builders() -> Dict[str, "Callable[[Dict[str, Any]], Any]"]:
 
 def build_ffn(cfg: Config):
     """按 ``cfg.model["ffn"]`` 构造前馈层（gelu / swiglu / moe）。"""
-    model_cfg = dict(cfg.model)
+    model_cfg = normalize_model_cfg(cfg.model)
     name = str(model_cfg.get("ffn", "swiglu")).lower()
     builders = _ffn_builders()
     if name not in builders:
@@ -301,6 +384,8 @@ def main() -> None:
 __all__ = [
     "ARCH_REGISTRY_NAMES",
     "FFN_REGISTRY_NAMES",
+    "MODEL_KEY_ALIASES",
+    "SECTION_ALIASES",
     "SECTIONS",
     "Config",
     "build_attention",
@@ -309,7 +394,9 @@ __all__ = [
     "load_config",
     "load_yaml",
     "main",
+    "normalize_model_cfg",
     "parse_overrides",
+    "select_arch",
 ]
 
 
