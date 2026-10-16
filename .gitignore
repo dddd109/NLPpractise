@@ -8,3 +8,6 @@ fusion_result.json
 /data/tokenized/
 /logs/
 *.orig
+
+# 训练日志与 checkpoint
+/runs/

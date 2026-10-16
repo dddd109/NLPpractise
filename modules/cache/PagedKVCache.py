@@ -109,65 +109,22 @@ class PagedKVCache(BaseKVCache):
                 self.key_blocks[layer_idx]
             ):
                 self.key_blocks[layer_idx].append(
-                    self._alloc_block(
-                        B,
-                        H,
-                        D,
-                        key.device,
-                        key.dtype,
-                    )
+                    self._alloc_block(B,H,D,key.device,key.dtype,)
                 )
-
                 self.value_blocks[layer_idx].append(
-                    self._alloc_block(
-                        B,
-                        H,
-                        D,
-                        value.device,
-                        value.dtype,
-                    )
+                    self._alloc_block(B,H, D,value.device,value.dtype,)
                 )
 
-            k_block = self.key_blocks[layer_idx][
-                logical_block_idx
-            ]
-
-            v_block = self.value_blocks[layer_idx][
-                logical_block_idx
-            ]
+            k_block = self.key_blocks[layer_idx][logical_block_idx]
+            v_block = self.value_blocks[layer_idx][logical_block_idx]
 
             write_size = min(
                 T_new - offset,
                 self.block_size - block_offset,
             )
 
-            k_block[
-                :,
-                :,
-                block_offset:block_offset + write_size,
-                :,
-            ].copy_(
-                key[
-                    :,
-                    :,
-                    offset:offset + write_size,
-                    :,
-                ]
-            )
-
-            v_block[
-                :,
-                :,
-                block_offset:block_offset + write_size,
-                :,
-            ].copy_(
-                value[
-                    :,
-                    :,
-                    offset:offset + write_size,
-                    :,
-                ]
-            )
+            k_block[:,:,block_offset:block_offset + write_size,:,].copy_(key[:,:,offset:offset + write_size,:,])
+            v_block[:,:,block_offset:block_offset + write_size,:,].copy_(value[:,:,offset:offset + write_size,:,])
 
             pos += write_size
             offset += write_size
