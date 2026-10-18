@@ -303,10 +303,17 @@ class DataLoaderLite:
         self.rank = ctx.rank
         self.world_size = ctx.world_size
 
-        key = "train_path" if split == "train" else "val_path"
-        path = cfg["data"].get(key) or cfg["data"].get(split)
+        # 兼容几种常见写法：train_path / train_bin / train（val 同理）
+        suffix = "train" if split == "train" else "val"
+        path = None
+        for key in (f"{suffix}_path", f"{suffix}_bin", suffix):
+            path = cfg["data"].get(key)
+            if path:
+                break
         if path is None:
-            raise KeyError(f"配置里没有 data.{key}")
+            raise KeyError(
+                f"配置里没有 data.{suffix}_path / data.{suffix}_bin / data.{suffix} 中的任何一个"
+            )
         self.path = Path(path)
         if not self.path.is_absolute():
             self.path = Path(_REPO_ROOT) / self.path

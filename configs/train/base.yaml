@@ -18,8 +18,8 @@ train:
   eval_every: 100
 
 data:
-  train: data/tokenized/fineweb_gpt2/train.bin
-  val: data/tokenized/fineweb_gpt2/val.bin
+  train_bin: data/tokenized/fineweb_gpt2/train.bin
+  val_bin: data/tokenized/fineweb_gpt2/val.bin
   storage_dtype: uint16      # scripts/data/tokenize_fineweb.py 写出来的就是 uint16
   tokenizer: tiktoken:gpt2
   vocab_size: 50257
