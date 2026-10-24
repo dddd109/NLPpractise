@@ -11,3 +11,6 @@ fusion_result.json
 
 # 训练日志与 checkpoint
 /runs/
+
+# 昇腾算子编译缓存
+/kernel_meta/
