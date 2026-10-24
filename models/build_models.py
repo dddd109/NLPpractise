@@ -53,6 +53,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import tiktoken
 
 from modules.cache.PagedKVCache import PagedKVCache
 from modules.normalize.RMSNorm import RMSNorm
@@ -236,12 +237,12 @@ class Model(nn.Module):
 
     # ------------------------------------------------------------------
     def forward(self, idx, targets=None, position_offset: int = 0):
-        x = self.embedd(idx)
+        x = self.embedd(idx)          # B,T,C
         cache = self.cache if self.use_cache else None
         for block in self.blocks:
             x = block(x, position_offset=position_offset, kv_cache=cache)
         x = self.norm(x)
-        logits = self.proj(x)
+        logits = self.proj(x)         # B,T,V
 
         loss = None
         if targets is not None:
@@ -263,7 +264,10 @@ class Model(nn.Module):
         attention 模块自己按 cache 长度推（所以这里传 ``position_offset=0``，
         显式再传一次会重复计数）。
         """
+        was_training = self.training
         self.eval()
+        # 调用方传 CPU tensor 或 list 都能用：统一挪到模型所在设备
+        idx = torch.as_tensor(idx, device=next(self.parameters()).device)
         if self.cache is not None:
             self.reset_cache()
         for _ in range(max_new_tokens):
@@ -280,6 +284,7 @@ class Model(nn.Module):
             probs = torch.softmax(logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, next_token), dim=1)
+        self.train(was_training)   # 恢复调用前的模式，别把 eval 状态带回训练循环
         return idx
 
 
@@ -454,12 +459,14 @@ def main():
     grad_accum = int(cfg["train"]["gradient_accumulation_steps"])
     train_loader = DataLoaderLite(B, T, cfg, ctx, split="train")
     val_loader = DataLoaderLite(B, T, cfg, ctx, split="val")
+    tokens_per_step = global_batch_tokens(B, T, grad_accum, ctx)
+    steps_per_epoch = train_loader.n_tokens // max(tokens_per_step, 1)
     rank0_print(
         ctx,
         f"[data] {train_loader.path.name}: {train_loader.n_tokens / 1e9:.2f}B tokens | "
         f"micro_batch={B} seq={T} grad_accum={grad_accum} world_size={ctx.world_size}\n"
-        f"       每次参数更新的全局 token 数 = "
-        f"{global_batch_tokens(B, T, grad_accum, ctx):,}",
+        f"       每次参数更新 = {tokens_per_step:,} tokens\n"
+        f"       1 个 epoch = {steps_per_epoch:,} 步",
     )
 
     # ---------------- 模型 ----------------
@@ -493,6 +500,19 @@ def main():
         out_dir = Path(_REPO_ROOT) / out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # ---- 训练预算自检：max_steps 到底吃了多少数据 ---------------------------
+    n_param = sum(p.numel() for p in raw_model.parameters())
+    chinchilla_steps = (20 * n_param) // max(tokens_per_step, 1)
+    rank0_print(
+        ctx,
+        f"[budget] max_steps={max_steps} -> {max_steps * tokens_per_step:,} tokens "
+        f"= {max_steps * tokens_per_step / train_loader.n_tokens:.2%} 个 epoch\n"
+        f"         Chinchilla 参考(20 tokens/参数, 共 {20 * n_param / 1e9:.2f}B tokens) "
+        f"≈ {chinchilla_steps:,} 步",
+    )
+    
+    # yaml 里写的是 "tiktoken:gpt2"，而 tiktoken.get_encoding 只认 "gpt2"，要把前缀去掉
+    enc = tiktoken.get_encoding(str(cfg["data"].get("tokenizer", "gpt2")).split(":")[-1])
     tag = (
         f"{cfg['model'].get('attention')}-{cfg['model']['n_layer']}L-"
         f"{cfg['model']['n_embd']}d"
@@ -500,12 +520,35 @@ def main():
     log_path = out_dir / f"train_{tag}_rank{ctx.rank}.jsonl"
     history = []
 
+    # ---- 样例生成器（CPU 副本，只在 rank0、第一次用到时构建）----------------
+    # 为什么放 CPU：昇腾的算子图是"按 shape 编译"的。不带 KV cache 的自回归生成
+    # 每多一个 token 序列长度就 +1，20 个 token = 20 个新 shape = 20 次图编译（几分钟）。
+    # 61M 的模型在 CPU 上生成 20 个 token 只要几秒，而且完全不占用 NPU、不影响训练。
+    sample_model = None
+
+    def print_sample(step: int) -> None:
+        nonlocal sample_model
+        if not ctx.is_main:
+            return
+        if sample_model is None:
+            sample_model = Model(cfg, use_cache=False).to("cpu")
+        sample_model.load_state_dict(
+            {k: v.detach().cpu() for k, v in raw_model.state_dict().items()}
+        )
+        sample_model.eval()
+        prompt = torch.tensor([enc.encode("I'm a large language model, and ")])
+        out = sample_model.generate(prompt, max_new_tokens=20, temperature=0.8, top_k=50)
+        rank0_print(ctx, f"[sample@{step}] " + enc.decode(out[0].tolist()))
+
     model.train()
+    current_val_loss = float("nan")
     for step in range(max_steps):
         last = step == max_steps - 1
         if not args.no_eval and (step % eval_interval == 0 or last):
-            val_loss = evaluate(model, val_loader, device, args.eval_iters, ctx)
-            rank0_print(ctx, f"[eval] step {step}: val_loss = {val_loss:.4f}")
+            current_val_loss = evaluate(model, val_loader, device, args.eval_iters, ctx)
+            rank0_print(ctx, f"[eval] step {step}: val_loss = {current_val_loss:.4f}")
+            # 样例生成交给 CPU 副本（原因见上面 print_sample 的注释）
+            print_sample(step)
 
         lr = lr_at(step, cfg)
         for group in optimizer.param_groups:
@@ -543,8 +586,8 @@ def main():
                 f"{tokens / dt:,.0f} tok/s",
             )
             history.append(
-                {"step": step, "loss": step_loss, "lr": lr, "grad_norm": float(norm),
-                 "ms": dt * 1000, "tokens_per_sec": tokens / dt}
+                {"step": step, "loss": step_loss, "val_loss": current_val_loss, "lr": lr,
+                 "grad_norm": float(norm), "ms": dt * 1000, "tokens_per_sec": tokens / dt}
             )
             with log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(history[-1], ensure_ascii=False) + "\n")
