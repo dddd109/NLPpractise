@@ -62,6 +62,7 @@ from Multi-Head Checkpoints" (arXiv:2305.13245)。
 """
 
 import math
+import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -85,9 +86,29 @@ def sdpa_gqa_available(device_type: str) -> bool:
 
     为什么必须真探测：CPU 上支持，但这台昇腾的 torch_npu 上直接抛
     ``can not cast format when output is input``。写死任何一个判断都会在另一边出错。
+
+    为什么昇腾上**默认跳过**探测（实测，torch_npu 2.10.0.post6 + CANN 9.1.1）：
+
+    1. SDPA 在这套环境上必然失败（上面那个报错），探测结果恒为 False；
+    2. **探测本身有副作用**：一次失败的 SDPA 会走到 math 回退路径，触发
+       ``isneginf`` 算子 —— 而 NPU 不支持该算子，于是打出一条
+       ``kernel [isneginf.out] is not supported ... running on CPU`` 的 warning，
+       并额外花掉约 5 秒。
+
+    所以 NPU 上直接返回 False；换了 CANN 版本想重新验证时，设环境变量
+    ``GQA_TRY_SDPA=1`` 即可恢复真探测。
     """
     if device_type in _SDPA_GQA_OK:
         return _SDPA_GQA_OK[device_type]
+
+    if device_type == "npu" and os.environ.get("GQA_TRY_SDPA", "") not in (
+        "1",
+        "true",
+        "True",
+    ):
+        _SDPA_GQA_OK["npu"] = False
+        return False
+
     ok = True
     try:
         device = torch.device(device_type)
