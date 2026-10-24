@@ -43,13 +43,16 @@ if str(_REPO_ROOT) not in sys.path:
 # 必须在 import datasets 之前：这台机器直连 huggingface.co 不通，要走镜像
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
+# 必须在 import torch 之前先导入 runtime.device —— 它会在 torch 导入之前判断 CANN
+# 是否已加载，没加载就设置 TORCH_DEVICE_BACKEND_AUTOLOAD=0，否则 `import torch` 直接崩。
+from runtime.device import device_info, get_device, synchronize
+
 import tiktoken
 import torch
 import torch.nn.functional as F
 
 from models.build_models import Model
 from runtime.config import load_config
-from runtime.device import device_info, get_device, synchronize
 
 
 # ---------------------------------------------------------------------------
