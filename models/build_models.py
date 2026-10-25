@@ -225,13 +225,19 @@ class Model(nn.Module):
     def _init_weights(self, verbose: bool = False):
         for name, param in self.named_parameters():
             if param.dim() > 1:
-                nn.init.xavier_uniform_(param)
+                nn.init.normal_(param,mean=0.0, std=0.02)  # GPT-2 的初始化
             elif "gamma" in name:
                 nn.init.ones_(param)          # RMSNorm 的 gamma 应当是 1
             else:
                 nn.init.zeros_(param)
             if verbose:
                 print(f"  {name}: {tuple(param.shape)}")
+        scale = 1.0 / math.sqrt(2 * self.n_layer)
+        with torch.no_grad():
+            for blk in self.blocks:
+                blk.attn.proj.weight.mul_(scale)   # 注意：GQA 里叫 proj
+                blk.ffn.w2.weight.mul_(scale)      # SwiGLU 的输出投影
+
         n_param = sum(p.numel() for p in self.parameters())
         print(f"[model] 参数量 = {n_param:,} ({n_param / 1e6:.1f}M)", flush=True)
 
@@ -542,6 +548,8 @@ def main():
 
     model.train()
     current_val_loss = float("nan")
+    
+    scaler = torch.npu.amp.GradScaler(enabled=(device.type == "npu"))
     for step in range(max_steps):
         last = step == max_steps - 1
         if not args.no_eval and (step % eval_interval == 0 or last):
@@ -565,14 +573,17 @@ def main():
             with sync_ctx, autocast(device):
                 _, loss = model(x, y)
                 loss = loss / grad_accum
-            loss.backward()
+            scaler.scale(loss).backward()
             loss_accum += loss.detach()
-
+        scaler.unscale_(optimizer)  # 反归一化梯度，方便 clip_grad_norm_ 检查
         norm = torch.nn.utils.clip_grad_norm_(raw_model.parameters(), grad_clip)
+        scaler.step(optimizer)       # 先尝试更新一次，失败会抛异常（梯度爆炸/NaN）
+        scaler.update()              # 更新 scaler，准备下一轮
+
+
         # 说明：DDP 在最后一个 micro-step 已经把所有 rank 的梯度做了 all_reduce
         # （得到的是同一个平均值），所以每个 rank 看到的梯度完全一致，
         # 这里各自按同样的阈值裁剪是等价的，不需要额外通信。
-        optimizer.step()
         synchronize(device)
         dt = time.perf_counter() - t0
 
@@ -604,8 +615,13 @@ def main():
                 path = out_dir / f"{tag}_step{step}.pt"
                 torch.save(ckpt, path)
                 rank0_print(ctx, f"[ckpt] 已保存 {path}")
+                keep_last = 3
+                old = sorted(out_dir.glob(f"{tag}_step*.pt"), key=lambda p: p.stat().st_mtime)
+                for path in old[:-keep_last]:
+                    path.unlink()
             # 其他 rank 等 rank0 写完再继续（否则可能被抢先覆盖）
             barrier()
+            
 
     cleanup(ctx)
 

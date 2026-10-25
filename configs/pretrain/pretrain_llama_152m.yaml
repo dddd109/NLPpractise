@@ -1,0 +1,42 @@
+# 模型结构：第一轮固定这些参数，避免实验中途随意改动
+model:
+  name: llama_152m
+  vocab_size: 50257
+  n_layer: 18
+  n_embd: 768
+  n_head: 12
+  n_kv_head: 4
+  intermediate_size: 2048
+  context_length: 1024
+  tie_embeddings: true
+
+  # 使用现代 Decoder 常见的组件
+  position_embedding: rope
+  normalization: rmsnorm
+  ffn: swiglu
+  attention: gqa
+
+# 数据配置：与现有 tokenized 数据保持一致
+data:
+  train_path: data/tokenized/fineweb_gpt2/train.bin
+  val_path: data/tokenized/fineweb_gpt2/val.bin
+  tokenizer: tiktoken:gpt2
+  eos_token_id: 50256
+  dtype: uint16
+
+# 训练参数：先作为候选配置，跑过冒烟测试后再确定
+training:
+  seed: 42
+  precision: torch.float16
+  optimizer: AdamW
+  learning_rate: 0.0003
+  weight_decay: 0.1
+  warmup_steps: 2000
+  grad_clip: 1.0
+
+  # 这里的 batch_size 指每张卡每个 micro-batch 的序列数
+  micro_batch_size: 1
+  gradient_accumulation_steps: 8
+  max_steps: 46000
+  eval_interval: 500
+  checkpoint_interval: 500

@@ -18,8 +18,8 @@ model:
 
 # 数据配置：与现有 tokenized 数据保持一致
 data:
-  train_path: data/tokenized/fineweb_gpt2_v2/train.bin
-  val_path: data/tokenized/fineweb_gpt2_v2/val.bin
+  train_path: data/tokenized/fineweb_gpt2/train.bin
+  val_path: data/tokenized/fineweb_gpt2/val.bin
   tokenizer: tiktoken:gpt2
   eos_token_id: 50256
   dtype: uint16
@@ -31,12 +31,12 @@ training:
   optimizer: AdamW
   learning_rate: 0.0003
   weight_decay: 0.1
-  warmup_steps: 200
+  warmup_steps: 2000
   grad_clip: 1.0
 
   # 这里的 batch_size 指每张卡每个 micro-batch 的序列数
   micro_batch_size: 1
   gradient_accumulation_steps: 8
-  max_steps: 1000
+  max_steps: 20000
   eval_interval: 100
   checkpoint_interval: 500
