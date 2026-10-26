@@ -10,7 +10,7 @@ fusion_result.json
 *.orig
 
 # 训练日志与 checkpoint
-/runs/
+/runs/pretrain/
 
 # 昇腾算子编译缓存
 /kernel_meta/

@@ -580,7 +580,6 @@ def main():
         scaler.step(optimizer)       # 先尝试更新一次，失败会抛异常（梯度爆炸/NaN）
         scaler.update()              # 更新 scaler，准备下一轮
 
-
         # 说明：DDP 在最后一个 micro-step 已经把所有 rank 的梯度做了 all_reduce
         # （得到的是同一个平均值），所以每个 rank 看到的梯度完全一致，
         # 这里各自按同样的阈值裁剪是等价的，不需要额外通信。

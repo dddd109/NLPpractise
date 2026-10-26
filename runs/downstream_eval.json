@@ -1,0 +1,20 @@
+{
+  "hellaswag": {
+    "n": 10,
+    "acc": 0.0,
+    "acc_norm": 0.0
+  },
+  "lambada": {
+    "n": 10,
+    "skipped": 0,
+    "acc": 0.0,
+    "ppl_last_word": 50627.859375
+  },
+  "_meta": {
+    "config": "/home/gdut/projects/NLPpractise/configs/pretrain/pretrain_llama.yaml",
+    "ckpt": null,
+    "device": "cpu",
+    "limit": 10,
+    "seed": 1234
+  }
+}
