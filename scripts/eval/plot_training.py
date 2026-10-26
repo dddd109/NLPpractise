@@ -78,12 +78,13 @@ LABELS = {
 }
 
 
-def _cjk_font_usable(name: str, probe: str = "损失率步数曲线") -> bool:
-    """检查某个字体是否**真的**覆盖这些汉字。
+def _cjk_font_usable(name: str, probe: str = "损失率步数曲线0129adw") -> bool:
+    """检查某个字体是否**同时**覆盖汉字和拉丁/数字。
 
-    为什么不能只看字体名：这台机器上唯一的 CJK 字体是
-    ``DroidSansFallbackFull.ttf``，字体名看着没问题，实测却缺 ``损/失/率/步/数...``
-    这些常用字（渲染出来就是方块）。所以这里直接查 cmap。
+    为什么要求"同时"：这台机器上唯一的 CJK 字体是 ``DroidSansFallbackFull.ttf``，
+    它有汉字但**没有拉丁字母和数字**；而 matplotlib 把 ``["DejaVu Sans", "Droid..."]``
+    这种组合交给它时，字形回退并没有真正生效，结果还是出方块。
+    所以只有"一个字体同时覆盖两边"才算可用（``Noto Sans CJK`` 就是这种）。
     """
     try:
         path = fm.findfont(fm.FontProperties(family=name), fallback_to_default=False)
@@ -101,14 +102,14 @@ def setup_style(lang: str):
     cjk = next((n for n in CJK_CANDIDATES if n in available and _cjk_font_usable(n)), None)
     if cjk is None:
         if lang == "zh":
-            print("[warn] 没有可用的中文字体（现有 CJK 字体缺汉字），图里改用英文标签。"
-                  "\n       想用中文：装 fonts-noto-cjk，或把 NotoSansSC*.ttf 丢进 ~/.fonts 再跑一次。")
+            print("[warn] 没有中英文字形都全的中文字体，图里改用英文标签（避免方块）。"
+                  "\n       想用中文：apt install fonts-noto-cjk，"
+                  "或把 NotoSansSC*.ttf 丢进 ~/.fonts 后重跑（脚本会自动切中文）。")
         lang = "en"
     if lang == "zh":
-        # 主字体管拉丁字母/数字，CJK 字体跟在后面管中文（matplotlib >= 3.6 支持按字形回退）
-        plt.rcParams["font.sans-serif"] = ["DejaVu Sans", cjk]
+        plt.rcParams["font.sans-serif"] = [cjk]
         plt.rcParams["axes.unicode_minus"] = False     # 否则负号会变方块
-        print(f"[plot] 字体: DejaVu Sans + {cjk}")
+        print(f"[plot] 中文字体: {cjk}")
     else:
         plt.rcParams["font.sans-serif"] = ["DejaVu Sans"]
 
